@@ -1,0 +1,59 @@
+# ─── Git ──────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ─── Virtual environments ─────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Python & Tooling Caches ──────────────────────────────
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ─── Environment / Secrets (Never include in images) ──────
+.env
+.env.*
+.env*.local
+*.pem
+*.key
+service-account*.json
+*-credentials.json
+*credentials*.json
+*-key.json
+*key*.json
+client_secret*.json
+
+# ─── IDE / Editor / OS ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Tests and Docs (Not needed in runtime image) ─────────
+tests/
+docs/
+
+# ─── Model Artifacts (Served via Vertex AI, not bundled) ──
+*.bin
+*.pt
+*.onnx
+*.safetensors
+models/
+
+# ─── Docker ───────────────────────────────────────────────
+Dockerfile
+docker-compose*.yml

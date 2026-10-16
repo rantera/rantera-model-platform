@@ -1,0 +1,64 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.whl
+
+# ─── Virtual environments ─────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Environment / secrets ────────────────────────────────
+.env
+.env.*
+.env*.local
+!.env.example
+*.pem
+*.key
+
+# ─── IDE / editor ─────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Testing / coverage ──────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ─── MyPy / type checking ────────────────────────────────
+.mypy_cache/
+.dmypy.json
+
+# ─── Docker ───────────────────────────────────────────────
+# Ignore local Docker overrides (not the Dockerfile itself)
+
+# ─── Google Cloud credentials (never commit) ─────────────
+service-account*.json
+*-credentials.json
+*credentials*.json
+*-key.json
+*key*.json
+client_secret*.json
+gcloud/
+
+# ─── Model artifacts ─────────────────────────────────────
+*.bin
+*.pt
+*.onnx
+*.safetensors
+models/
