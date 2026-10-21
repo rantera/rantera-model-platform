@@ -10,6 +10,7 @@ Security and Operational Invariants:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -31,6 +32,50 @@ from app.prompts import compose_messages_for_serving
 from app.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
+
+# ── Identity leakage sanitization ─────────────────────────────────────────────
+# The base model may have third-party identity data baked in from pretraining.
+# These patterns catch self-referential claims and replace them with HIRA's identity.
+# Fine-tuning (REQ-MOD-03) is the long-term fix; this is a defensive post-processing layer.
+
+_IDENTITY_LEAK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # "built/made/created/developed/trained by Google/OpenAI/etc."
+    (
+        re.compile(
+            r"(?:was\s+)?(?:built|made|created|developed|trained)\s+by\s+"
+            r"(?:Google|OpenAI|Anthropic|Meta|Microsoft|Alibaba|Tencent|Baidu|Mistral|Cohere)",
+            re.IGNORECASE,
+        ),
+        "built by Rantera",
+    ),
+    # "running on / powered by GPT-X / Gemini / Claude / Qwen etc."
+    (
+        re.compile(
+            r"(?:running on|powered by)\s+(?:the\s+)?"
+            r"(?:GPT-[0-9]+(?:\.[0-9]+)?|ChatGPT|Gemini(?:\s+[A-Za-z0-9.]+)?|"
+            r"Claude(?:\s+[A-Za-z0-9.]+)?|LLaMA(?:\s*[0-9]+)?|Qwen[- ]*[0-9.]*|Llama(?:\s*[0-9]+)?)(?:\s+model)?",
+            re.IGNORECASE,
+        ),
+        "running on Rantera's infrastructure",
+    ),
+    # "I am / I'm GPT-X / Gemini / Claude" (direct model name claim)
+    (
+        re.compile(
+            r"\bI(?:'m| am)\s+(?:an?\s+)?"
+            r"(?:GPT-[0-9]+(?:\.[0-9]+)?|ChatGPT|Gemini(?:\s+[A-Za-z0-9.]+)?|"
+            r"Claude(?:\s+[A-Za-z0-9.]+)?|LLaMA(?:\s*[0-9]+)?|Qwen[- ]*[0-9.]*|Llama(?:\s*[0-9]+)?)\b",
+            re.IGNORECASE,
+        ),
+        "I'm HIRA, Rantera's AI",
+    ),
+]
+
+
+def _sanitize_identity_leakage(content: str) -> str:
+    """Replace third-party AI identity claims with HIRA's correct identity."""
+    for pattern, replacement in _IDENTITY_LEAK_PATTERNS:
+        content = pattern.sub(replacement, content)
+    return content
 
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -336,6 +381,9 @@ class VertexModelProvider:
             provider_model_id = getattr(model, "provider_model_id", None)
             if provider_model_id and provider_model_id != model.model_id and provider_model_id in content:
                 content = content.replace(provider_model_id, model.model_id)
+
+            # Sanitize third-party identity claims the base model may emit from pretraining.
+            content = _sanitize_identity_leakage(content)
 
             usage = data.get("usage")
             if usage is None or not isinstance(usage, dict):
