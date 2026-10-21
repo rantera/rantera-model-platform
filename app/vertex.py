@@ -27,6 +27,7 @@ except ImportError:
     google = None  # type: ignore[assignment]
 
 from app.config import Settings
+from app.identity import get_hira_identity_response, is_hira_identity_question
 from app.models import RegisteredModel
 from app.prompts import compose_messages_for_serving
 from app.schemas import ChatMessage
@@ -80,14 +81,6 @@ _IDENTITY_LEAK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
             re.IGNORECASE,
         ),
         "I'm HIRA, Rantera's AI",
-    ),
-    # "founder of OpenAI" appearing in response (model conflating identity with OpenAI context)
-    (
-        re.compile(
-            r"(?:the\s+)?(?:founder|co-founder|ceo|creator)s?\s+of\s+" + _THIRD_PARTY_AI_NAMES,
-            re.IGNORECASE,
-        ),
-        "founder of Rantera",
     ),
 ]
 
@@ -324,6 +317,35 @@ class VertexModelProvider:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Vertex AI prediction service is not configured in this environment.",
+            )
+
+        # Identity question interceptor: short-circuit before hitting the model.
+        # The base model has third-party identity baked in from pretraining —
+        # intercepting here ensures we never return "I was built by OpenAI/Google."
+        last_user_content = next(
+            (
+                str(getattr(m, "content", "") if not isinstance(m, dict) else m.get("content", ""))
+                for m in reversed(list(messages))
+                if (getattr(m, "role", "") if not isinstance(m, dict) else m.get("role", "")) == "user"
+            ),
+            "",
+        )
+        if is_hira_identity_question(last_user_content):
+            identity_text = get_hira_identity_response(last_user_content)
+            tokens_in = max(
+                1,
+                sum(
+                    len(str(getattr(m, "content", "") if not isinstance(m, dict) else m.get("content", "")))
+                    for m in messages
+                ) // 4,
+            )
+            tokens_out = max(1, len(identity_text) // 4)
+            return PredictionResult(
+                content=identity_text,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=1,
+                finish_reason="stop",
             )
 
         token = self._resolve_token()
