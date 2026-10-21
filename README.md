@@ -106,6 +106,7 @@ rantera-model-platform/
 │   ├── logging.py        # Structured JSON audit logging
 │   ├── main.py           # FastAPI application factory
 │   ├── models.py         # Dynamic model catalog service
+│   ├── prompts.py        # HIRA system prompt, identity protection, message composition
 │   ├── rate_limit.py     # Token-bucket rate limiter
 │   ├── schemas.py        # Request/response Pydantic models
 │   ├── telemetry.py      # Inference telemetry recording
