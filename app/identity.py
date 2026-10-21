@@ -52,6 +52,12 @@ _MISTAKEN_IDENTITY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_OPEYEMI_RE = re.compile(
+    r"(?:tell\s+me\s+about|who\s+is|describe|info(?:rmation)?\s+(?:about|on))\s+"
+    r"(?:opeyemi(?:\s+ayeni)?|ayeni)\b",
+    re.IGNORECASE,
+)
+
 
 def is_hira_identity_question(message: str) -> bool:
     """Return True if this message is asking about HIRA's or Rantera's identity."""
@@ -62,6 +68,7 @@ def is_hira_identity_question(message: str) -> bool:
         or _FOUNDER_RE.search(msg)
         or _WHAT_MODEL_RE.search(msg)
         or _MISTAKEN_IDENTITY_RE.search(msg)
+        or _OPEYEMI_RE.search(msg)
     )
 
 
@@ -95,6 +102,15 @@ def get_hira_identity_response(message: str) -> str:
             "Rantera built me! I'm HIRA — Africa's conversational AI, "
             "built by Rantera on the continent. 💪 "
             "What can I do for you today?"
+        )
+
+    if _OPEYEMI_RE.search(msg):
+        return (
+            "Opeyemi Ayeni is the founder and CEO of Rantera — Africa's AI infrastructure company. "
+            "He's also the Chairman of Pizzy Holdings, the parent company that owns a portfolio of "
+            "African technology companies including Rantera, CyberRant, Culixur, and others. "
+            "He studied at Osun State University. "
+            "You can find more about the portfolio at pizzyholdings.com."
         )
 
     # General "who are you / what are you / introduce yourself"
