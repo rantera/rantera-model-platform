@@ -27,6 +27,7 @@ except ImportError:
 
 from app.config import Settings
 from app.models import RegisteredModel
+from app.prompts import compose_messages_for_serving
 from app.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -222,11 +223,24 @@ class VertexModelProvider:
     ) -> dict[str, Any]:
         """Construct standard OpenAI Chat Completions payload compatible with vLLM."""
         model_name = getattr(model, "provider_model_id", None) or model.model_id
+        enable_hira = getattr(self.settings, "hira_system_prompt_enabled", True)
+        custom_prompt = getattr(self.settings, "hira_system_prompt", None)
+        serving_messages = compose_messages_for_serving(
+            messages=messages,
+            enable_hira_identity=enable_hira,
+            base_system_prompt=custom_prompt,
+        )
+
+        enable_thinking = getattr(self.settings, "enable_thinking_default", False)
+
         payload: dict[str, Any] = {
             "model": model_name,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": serving_messages,
             "temperature": temperature,
             "stream": False,
+            "chat_template_kwargs": {
+                "enable_thinking": bool(enable_thinking),
+            },
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -316,6 +330,12 @@ class VertexModelProvider:
             message_obj = first_choice.get("message", {})
             content = str(message_obj.get("content") or "")
             finish_reason = str(first_choice.get("finish_reason") or "stop")
+
+            # Defense-in-depth: Sanitize accidental leakage of internal provider model identifiers
+            # (such as internal filesystem paths or checkpoint names) from generated output.
+            provider_model_id = getattr(model, "provider_model_id", None)
+            if provider_model_id and provider_model_id != model.model_id and provider_model_id in content:
+                content = content.replace(provider_model_id, model.model_id)
 
             usage = data.get("usage")
             if usage is None or not isinstance(usage, dict):

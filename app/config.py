@@ -223,12 +223,27 @@ class Settings(BaseSettings):
         description="Pre-shared secret for trusted server-to-server calls from website to gateway.",
     )
 
+    # ── Model Identity and Chat Template (HIRA) ───────────────
+    hira_system_prompt_enabled: bool = Field(
+        default=True,
+        description="Whether to enforce the canonical HIRA system prompt at the gateway layer.",
+    )
+    hira_system_prompt: Optional[str] = Field(
+        default=None,
+        description="Custom HIRA system prompt override. If None or empty, the canonical HIRA_SYSTEM_PROMPT is used.",
+    )
+    enable_thinking_default: bool = Field(
+        default=False,
+        description="Default value for upstream chat_template_kwargs.enable_thinking parameter.",
+    )
+
     @field_validator(
         "gcp_project_id",
         "gcp_region",
         "vertex_endpoint_id",
         "pubsub_push_audience",
         "pubsub_push_service_account_email",
+        "hira_system_prompt",
         mode="before",
     )
     @classmethod
@@ -405,6 +420,8 @@ class Settings(BaseSettings):
             f"vertex_configured={self.vertex_configured}, "
             f"database_configured={self.database_configured}, "
             f"telemetry_fail_closed={self.telemetry_fail_closed}, "
+            f"hira_system_prompt_enabled={self.hira_system_prompt_enabled}, "
+            f"enable_thinking_default={self.enable_thinking_default}, "
             f"internal_service_key={'[SET]' if self.internal_service_key else '[NOT SET]'})"
         )
 

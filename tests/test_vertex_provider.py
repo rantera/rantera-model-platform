@@ -80,7 +80,7 @@ def test_endpoint_url_construction():
 
 
 def test_payload_construction_matches_openai_schema():
-    """Verify payload is constructed in OpenAI Chat Completions format required by vLLM."""
+    """Verify payload is constructed in OpenAI Chat Completions format with canonical HIRA prompt and thinking disabled."""
     settings = _make_prod_settings()
     provider = VertexModelProvider(settings=settings)
     model = _make_sample_model()
@@ -98,11 +98,47 @@ def test_payload_construction_matches_openai_schema():
 
     assert payload["model"] == "rantera-base-v1"
     assert len(payload["messages"]) == 2
-    assert payload["messages"][0] == {"role": "system", "content": "You are a helpful assistant."}
+    assert payload["messages"][0]["role"] == "system"
+    assert "You are HIRA" in payload["messages"][0]["content"]
+    assert "You are a helpful assistant." in payload["messages"][0]["content"]
     assert payload["messages"][1] == {"role": "user", "content": "Translate to Swahili."}
     assert payload["temperature"] == 0.5
     assert payload["max_tokens"] == 2048
     assert payload["stream"] is False
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_payload_construction_with_hira_prompt_disabled():
+    """When HIRA prompt is disabled, client system instructions are forwarded without HIRA prefix."""
+    settings = _make_prod_settings(hira_system_prompt_enabled=False)
+    provider = VertexModelProvider(settings=settings)
+    model = _make_sample_model()
+    messages = [
+        ChatMessage(role="system", content="You are a helpful assistant."),
+        ChatMessage(role="user", content="Translate to Swahili."),
+    ]
+
+    payload = provider._build_payload(
+        model=model,
+        messages=messages,
+    )
+
+    assert len(payload["messages"]) == 2
+    assert payload["messages"][0] == {"role": "system", "content": "You are a helpful assistant."}
+    assert payload["messages"][1] == {"role": "user", "content": "Translate to Swahili."}
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_payload_construction_with_thinking_mode_enabled():
+    """When enable_thinking_default is configured True, chat_template_kwargs reflects it."""
+    settings = _make_prod_settings(enable_thinking_default=True)
+    provider = VertexModelProvider(settings=settings)
+    model = _make_sample_model()
+    messages = [ChatMessage(role="user", content="Hello")]
+
+    payload = provider._build_payload(model=model, messages=messages)
+    assert payload["chat_template_kwargs"] == {"enable_thinking": True}
+
 
 
 def test_payload_construction_omits_max_tokens_when_none():
@@ -448,3 +484,57 @@ def test_get_model_provider_development_uses_mock_when_unconfigured():
 
     provider = get_model_provider(settings)
     assert isinstance(provider, MockModelProvider)
+
+
+@pytest.mark.anyio
+async def test_predict_post_inference_sanitizes_provider_model_id():
+    """Verify that if upstream Vertex AI completion text contains provider_model_id, it is scrubbed."""
+    settings = _make_prod_settings()
+    mock_creds = _make_mock_credentials()
+
+    vllm_response = {
+        "id": "chatcmpl-test-leak",
+        "object": "chat.completion",
+        "created": 1729000000,
+        "model": "/tmp/afriqueqwen",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Running checkpoint at /tmp/afriqueqwen for inference.",
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 15,
+            "completion_tokens": 10,
+            "total_tokens": 25,
+        },
+    }
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = vllm_response
+    mock_client.post.return_value = mock_resp
+
+    provider = VertexModelProvider(
+        settings=settings,
+        client=mock_client,
+        credentials=mock_creds,
+    )
+    model = RegisteredModel(
+        model_id="rantera-base-v1",
+        provider_model_id="/tmp/afriqueqwen",
+        description="Rantera base model",
+    )
+    messages = [ChatMessage(role="user", content="What is your path?")]
+
+    result = await provider.predict(model=model, messages=messages)
+
+    # Must scrub internal provider_model_id
+    assert "/tmp/afriqueqwen" not in result.content
+    assert "rantera-base-v1" in result.content
+    assert result.content == "Running checkpoint at rantera-base-v1 for inference."
