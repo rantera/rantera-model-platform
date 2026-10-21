@@ -38,35 +38,56 @@ logger = logging.getLogger(__name__)
 # These patterns catch self-referential claims and replace them with HIRA's identity.
 # Fine-tuning (REQ-MOD-03) is the long-term fix; this is a defensive post-processing layer.
 
+_THIRD_PARTY_AI_NAMES = (
+    r"(?:Google|OpenAI|Anthropic|Meta|Microsoft|Alibaba|Tencent|Baidu|Mistral|Cohere|DeepMind)"
+)
+_THIRD_PARTY_MODELS = (
+    r"(?:GPT-[0-9]+(?:\.[0-9]+)?|ChatGPT|Gemini(?:\s+[A-Za-z0-9]+)?|"
+    r"Claude(?:\s+[A-Za-z0-9]+)?|LLaMA\s*[0-9]*|Qwen[- ]*[0-9.]*|Llama\s*[0-9]*)"
+)
+
 _IDENTITY_LEAK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    # "built/made/created/developed/trained by Google/OpenAI/etc."
+    # "built/made/created by OpenAI/Google" (direct)
     (
         re.compile(
-            r"(?:was\s+)?(?:built|made|created|developed|trained)\s+by\s+"
-            r"(?:Google|OpenAI|Anthropic|Meta|Microsoft|Alibaba|Tencent|Baidu|Mistral|Cohere)",
+            r"(?:was\s+)?(?:built|made|created|developed|trained)\s+by\s+" + _THIRD_PARTY_AI_NAMES,
             re.IGNORECASE,
         ),
         "built by Rantera",
     ),
-    # "running on / powered by GPT-X / Gemini / Claude / Qwen etc."
+    # "built by a team of engineers and data scientists at OpenAI" (indirect via "at")
     (
         re.compile(
-            r"(?:running on|powered by)\s+(?:the\s+)?"
-            r"(?:GPT-[0-9]+(?:\.[0-9]+)?|ChatGPT|Gemini(?:\s+[A-Za-z0-9.]+)?|"
-            r"Claude(?:\s+[A-Za-z0-9.]+)?|LLaMA(?:\s*[0-9]+)?|Qwen[- ]*[0-9.]*|Llama(?:\s*[0-9]+)?)(?:\s+model)?",
+            r"(?:was\s+)?(?:built|made|created|developed|trained)\s+by\s+a\s+\w+\s+"
+            r"(?:of\s+[\w\s,]+\s+)?at\s+" + _THIRD_PARTY_AI_NAMES,
+            re.IGNORECASE,
+        ),
+        "built by Rantera",
+    ),
+    # "running on OpenAI's GPT-3" / "running on GPT-3" / "powered by Gemini"
+    (
+        re.compile(
+            r"(?:running on|powered by)\s+(?:" + _THIRD_PARTY_AI_NAMES + r"'s?\s+)?"
+            + _THIRD_PARTY_MODELS + r"(?:\s+(?:large\s+language\s+)?model)?",
             re.IGNORECASE,
         ),
         "running on Rantera's infrastructure",
     ),
-    # "I am / I'm GPT-X / Gemini / Claude" (direct model name claim)
+    # "I am / I'm GPT-3 / Gemini / Claude" (direct model-name self-reference)
     (
         re.compile(
-            r"\bI(?:'m| am)\s+(?:an?\s+)?"
-            r"(?:GPT-[0-9]+(?:\.[0-9]+)?|ChatGPT|Gemini(?:\s+[A-Za-z0-9.]+)?|"
-            r"Claude(?:\s+[A-Za-z0-9.]+)?|LLaMA(?:\s*[0-9]+)?|Qwen[- ]*[0-9.]*|Llama(?:\s*[0-9]+)?)\b",
+            r"\bI(?:'m| am)\s+(?:an?\s+)?" + _THIRD_PARTY_MODELS + r"\b",
             re.IGNORECASE,
         ),
         "I'm HIRA, Rantera's AI",
+    ),
+    # "founder of OpenAI" appearing in response (model conflating identity with OpenAI context)
+    (
+        re.compile(
+            r"(?:the\s+)?(?:founder|co-founder|ceo|creator)s?\s+of\s+" + _THIRD_PARTY_AI_NAMES,
+            re.IGNORECASE,
+        ),
+        "founder of Rantera",
     ),
 ]
 
